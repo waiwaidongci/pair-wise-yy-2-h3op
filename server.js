@@ -1,38 +1,11 @@
 import http from "node:http";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { loadDb, saveDb } from "./src/store.js";
+import { body, sendJson } from "./src/http.js";
+import { handleEnvApi } from "./src/envApi.js";
+import { envPage } from "./src/envPage.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const dbPath = join(__dirname, "data", "pigeons.json");
 const port = Number(process.env.PORT || 3024);
 
-const seed = {
-  pigeons: [
-    { ringNo: "CHN-2026-001", owner: "北岸棚", fatherRing: "CHN-2022-188", motherRing: "CHN-2023-512", color: "灰", loft: "北岸A棚", vaccines: [{ date: "2026-04-01", name: "新城疫" }], transfers: [{ date: "2026-04-15", from: "育种棚", to: "北岸棚" }], races: [{ date: "2026-06-01", event: "120公里训放", distance: 120, returnTime: "10:42", rank: 18 }] },
-    { ringNo: "CHN-2022-188", owner: "育种棚", fatherRing: "", motherRing: "", color: "雨点", loft: "种鸽棚", vaccines: [], transfers: [], races: [] },
-    { ringNo: "CHN-2023-512", owner: "育种棚", fatherRing: "", motherRing: "", color: "红轮", loft: "种鸽棚", vaccines: [], transfers: [], races: [] }
-  ]
-};
-
-async function loadDb() {
-  if (!existsSync(dbPath)) {
-    await mkdir(dirname(dbPath), { recursive: true });
-    await writeFile(dbPath, JSON.stringify(seed, null, 2));
-  }
-  return JSON.parse(await readFile(dbPath, "utf8"));
-}
-async function saveDb(db) { await writeFile(dbPath, JSON.stringify(db, null, 2)); }
-async function body(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
-}
-function sendJson(res, status, data) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(data, null, 2));
-}
 function relation(db, ringNo) {
   const pigeon = db.pigeons.find(item => item.ringNo === ringNo);
   if (!pigeon) return null;
@@ -56,6 +29,7 @@ const page = `<!doctype html>
     form,.panel,.card,.stat { background:#fff; border:1px solid var(--line); border-radius:8px; padding:16px; } h2 { margin:0 0 12px; font-size:18px; }
     label { display:block; margin:10px 0 5px; color:var(--muted); font-size:13px; } input,select { width:100%; border:1px solid var(--line); border-radius:6px; padding:9px; font:inherit; }
     button { border:0; border-radius:6px; background:var(--accent); color:#fff; padding:10px 13px; font-weight:700; cursor:pointer; }
+    .navlink { color:var(--accent); font-weight:700; text-decoration:none; margin-right:12px; }
     .toolbar { display:grid; grid-template-columns:1fr auto; gap:10px; margin-bottom:14px; } .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
     .card { display:grid; gap:8px; } .meta { color:var(--muted); font-size:13px; } .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:3px 8px; font-size:12px; }
     .section { margin-top:14px; } .relation { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px; } .small { background:#f8fafb; border:1px solid var(--line); border-radius:8px; padding:10px; }
@@ -63,7 +37,7 @@ const page = `<!doctype html>
   </style>
 </head>
 <body>
-  <header><div><h1>赛鸽血统环号登记站</h1><div class="meta">档案、血统、转让和归巢成绩</div></div><button id="reload">刷新</button></header>
+  <header><div><h1>赛鸽血统环号登记站</h1><div class="meta">档案、血统、转让和归巢成绩</div></div><div><a class="navlink" href="/env">环控监测台 →</a><button id="reload">刷新</button></div></header>
   <main>
     <form id="form">
       <h2>创建鸽只档案</h2>
@@ -114,7 +88,7 @@ const page = `<!doctype html>
     document.querySelector("#reload").onclick = load;
     form.onsubmit = async event => {
       event.preventDefault();
-      await api("/api/pigeons", { method:"POST", body: JSON.stringify(Object.fromEntries(new FormData(form).entries())) });
+      await api("/api/pigeons", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form).entries())) });
       form.reset(); await load();
     };
     load();
@@ -130,6 +104,11 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type":"text/html; charset=utf-8" });
       return res.end(page);
     }
+    if (req.method === "GET" && url.pathname === "/env") {
+      res.writeHead(200, { "Content-Type":"text/html; charset=utf-8" });
+      return res.end(envPage);
+    }
+    if (url.pathname.startsWith("/api/env/") && await handleEnvApi(req, res, url, db)) return;
     if (req.method === "GET" && url.pathname === "/api/pigeons") return sendJson(res, 200, db.pigeons);
     if (req.method === "POST" && url.pathname === "/api/pigeons") {
       const input = await body(req);
