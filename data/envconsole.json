@@ -1,0 +1,157 @@
+{
+  "points": [
+    {
+      "id": "pt_muhlibbk4ax1af",
+      "shed": "A棚",
+      "name": "A棚·东测点",
+      "deviceNo": "DEV-A1",
+      "thresholds": {},
+      "createdAt": "2026-09-25T23:32:11.600Z"
+    },
+    {
+      "id": "pt_muhlibbk2jv0qu",
+      "shed": "A棚",
+      "name": "A棚·西测点",
+      "deviceNo": "DEV-A2",
+      "thresholds": {},
+      "createdAt": "2026-09-25T23:32:11.600Z"
+    },
+    {
+      "id": "pt_muhlibbk6kjtlk",
+      "shed": "B棚",
+      "name": "B棚·中测点",
+      "deviceNo": "DEV-B1",
+      "thresholds": {},
+      "createdAt": "2026-09-25T23:32:11.600Z"
+    }
+  ],
+  "readings": [
+    {
+      "id": "rd_muhlibbkfqzjuh",
+      "pointId": "pt_muhlibbk4ax1af",
+      "deviceNo": "DEV-A1",
+      "values": {
+        "temp": 22.4,
+        "hum": 58,
+        "nh3": 6
+      },
+      "sampledAt": "2026-09-25T23:29:11.600Z",
+      "receivedAt": "2026-09-25T23:29:11.600Z",
+      "source": "device",
+      "isCurrent": true,
+      "version": 1
+    },
+    {
+      "id": "rd_muhlibblmli13d",
+      "pointId": "pt_muhlibbk2jv0qu",
+      "deviceNo": "DEV-A2",
+      "values": {
+        "temp": 27.1,
+        "hum": 71,
+        "nh3": 26.4
+      },
+      "sampledAt": "2026-09-25T23:30:11.601Z",
+      "receivedAt": "2026-09-25T23:30:11.601Z",
+      "source": "device",
+      "isCurrent": true,
+      "version": 1
+    },
+    {
+      "id": "rd_muhlibbmtsztof",
+      "pointId": "pt_muhlibbk6kjtlk",
+      "deviceNo": "DEV-B1",
+      "values": {
+        "temp": 21,
+        "hum": 55,
+        "nh3": 8
+      },
+      "sampledAt": "2026-09-25T23:02:11.602Z",
+      "receivedAt": "2026-09-25T23:02:11.602Z",
+      "source": "device",
+      "isCurrent": true,
+      "version": 1
+    }
+  ],
+  "events": [
+    {
+      "id": "ev_muhlibbl9cemn8",
+      "key": "pt_muhlibbk2jv0qu:breach:nh3",
+      "pointId": "pt_muhlibbk2jv0qu",
+      "shed": "A棚",
+      "pointName": "A棚·西测点",
+      "deviceNo": "DEV-A2",
+      "kind": "breach",
+      "metric": "nh3",
+      "level": "high",
+      "status": "open",
+      "firstAt": "2026-09-25T23:30:11.601Z",
+      "lastAt": "2026-09-25T23:30:11.601Z",
+      "firstReadingId": "rd_muhlibblmli13d",
+      "lastReadingId": "rd_muhlibblmli13d",
+      "readingValue": 26.4,
+      "basisReadingIds": [
+        "rd_muhlibblmli13d"
+      ],
+      "replayedFromId": null
+    },
+    {
+      "id": "ev_muhlibbzft5ku8",
+      "key": "pt_muhlibbk6kjtlk:offline",
+      "pointId": "pt_muhlibbk6kjtlk",
+      "shed": "B棚",
+      "pointName": "B棚·中测点",
+      "deviceNo": "DEV-B1",
+      "kind": "offline",
+      "metric": null,
+      "level": null,
+      "status": "open",
+      "firstAt": "2026-09-25T23:32:11.602Z",
+      "lastAt": "2026-09-25T23:32:11.602Z",
+      "firstReadingId": "rd_muhlibbmtsztof",
+      "lastReadingId": "rd_muhlibbmtsztof",
+      "readingValue": null,
+      "basisReadingIds": [
+        "rd_muhlibbmtsztof"
+      ],
+      "replayedFromId": null
+    }
+  ],
+  "eventHistory": [],
+  "commands": [
+    {
+      "id": "cmd_muhlibbmt997ev",
+      "shed": "A棚",
+      "action": "fan_on",
+      "kind": "auto",
+      "status": "draft",
+      "basisEventIds": [
+        "ev_muhlibbl9cemn8"
+      ],
+      "blockers": [],
+      "validity": "valid",
+      "invalidReason": null,
+      "createdAt": "2026-09-25T23:32:11.602Z",
+      "createActor": "system",
+      "issuedBy": null,
+      "issuedAt": null,
+      "requestedCloseBy": null,
+      "requestedCloseAt": null,
+      "closeConfirmedBy": null,
+      "closedAt": null,
+      "closeReason": null
+    }
+  ],
+  "audit": [
+    {
+      "seq": 1,
+      "id": "au_muhlibbzl8ko8o",
+      "at": "2026-09-25T23:32:11.615Z",
+      "type": "seed",
+      "actor": "system",
+      "payload": {
+        "points": 3
+      }
+    }
+  ],
+  "seq": 1
+}

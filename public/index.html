@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>鸽舍环控监测台</title>
+<style>
+  :root { --bg:#eef1f4; --panel:#fff; --ink:#1f2833; --muted:#697786; --line:#d3dce4; --accent:#2f6b4f; --red:#9b3f35; --amber:#a6731b; --blue:#315f83; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:Arial,"PingFang SC",sans-serif; }
+  header { padding:18px 26px; background:#fff; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:16px; align-items:center; flex-wrap:wrap; }
+  h1 { margin:0; font-size:23px; }
+  main { padding:20px 26px; }
+  .meta { color:var(--muted); font-size:13px; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  .tabs button, button { border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); padding:8px 14px; font:inherit; cursor:pointer; }
+  .tabs button.active { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700; }
+  button.danger { background:var(--red); color:#fff; border-color:var(--red); }
+  button.warn { background:var(--amber); color:#fff; border-color:var(--amber); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .panel,.card,.stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:12px; }
+  .card h3 { margin:0 0 6px; font-size:16px; }
+  .row { display:flex; justify-content:space-between; gap:8px; align-items:center; margin:4px 0; }
+  .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:2px 9px; font-size:12px; white-space:nowrap; }
+  .pill.red { background:#f7e7e5; border-color:#d8a19b; color:var(--red); }
+  .pill.green { background:#e6f2eb; border-color:#9cc9ae; color:var(--accent); }
+  .pill.amber { background:#f8efdd; border-color:#d6b878; color:var(--amber); }
+  .pill.blue { background:#e5edf4; border-color:#94b2c9; color:var(--blue); }
+  .pill.gray { background:#eef1f4; color:var(--muted); }
+  .metric { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:8px 0; }
+  .metric div { background:#f7f9fa; border:1px solid var(--line); border-radius:6px; padding:7px 9px; font-size:13px; text-align:center; }
+  .metric b { display:block; font-size:16px; margin-top:2px; }
+  .metric b.bad { color:var(--red); }
+  table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; }
+  th,td { border:1px solid var(--line); padding:7px 9px; text-align:left; vertical-align:top; }
+  th { background:#f5f7f9; }
+  label { display:block; margin:8px 0 4px; color:var(--muted); font-size:12px; }
+  input,select,textarea { width:100%; border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; }
+  .formline { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  dialog { border:1px solid var(--line); border-radius:10px; padding:18px; width:min(560px,92vw); }
+  dialog::backdrop { background:rgba(20,30,25,.45); }
+  .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .toast { position:fixed; right:20px; bottom:20px; background:#23302a; color:#fff; padding:10px 16px; border-radius:8px; font-size:14px; opacity:0; transition:opacity .25s; max-width:70vw; z-index:50; }
+  .toast.show { opacity:1; }
+  .toast.err { background:var(--red); }
+  .muted { color:var(--muted); }
+  .small { font-size:12px; }
+  code { background:#f2f5f7; padding:1px 5px; border-radius:4px; }
+  .statbar { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:16px; }
+  .stat b { font-size:22px; }
+  @media (max-width:800px){ main{padding:12px;} header{padding:14px;} .formline{grid-template-columns:1fr 1fr;} }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>鸽舍环控监测台</h1>
+    <div class="meta">每棚每测点登记设备号 · 温湿度/氨气 · 越界事件 · 风机双人联锁 · 更正重判留档</div>
+  </div>
+  <div class="row">
+    <label style="margin:0">当前值班员</label>
+    <input id="operator" style="width:150px" placeholder="工号/姓名">
+    <button id="reload">刷新</button>
+    <button id="sweep">掉线扫描</button>
+  </div>
+</header>
+<main>
+  <div class="tabs">
+    <button data-tab="points" class="active">① 测点 / 上报</button>
+    <button data-tab="events">② 事件</button>
+    <button data-tab="commands">③ 风机指令</button>
+    <button data-tab="archive">④ 存档 / 审计</button>
+  </div>
+
+  <section id="tab-points">
+    <div class="statbar" id="pointStats"></div>
+    <div class="panel" style="margin-bottom:14px">
+      <b>登记新测点</b>
+      <div class="formline">
+        <div><label>棚号</label><input id="np-shed" placeholder="如 A棚"></div>
+        <div><label>测点名称</label><input id="np-name" placeholder="如 A棚·北角"></div>
+        <div><label>设备号</label><input id="np-device" placeholder="如 DEV-A3"></div>
+        <div style="align-self:end"><button class="primary" id="np-save">登记测点</button></div>
+      </div>
+      <div class="small muted" style="margin-top:6px">阈值使用默认值（温度 5–30℃、湿度 40–75%RH、氨气 0–20ppm），可按测点在 API 覆盖。</div>
+    </div>
+    <div class="grid" id="pointCards"></div>
+  </section>
+
+  <section id="tab-events" hidden>
+    <div class="toolbar">
+      <button data-evfilter="open" class="active">未结</button>
+      <button data-evfilter="all">全部</button>
+      <button data-evfilter="closed">已结</button>
+      <span class="meta">同一测点连续越界上报并入同一未结事件；读数恢复正常自动结事件，缺测/掉线不自动结越界事件。</span>
+    </div>
+    <table id="eventTable"></table>
+  </section>
+
+  <section id="tab-commands" hidden>
+    <div class="panel" style="margin-bottom:14px">
+      <b>值班员复核后手动下发</b>
+      <div class="formline">
+        <div><label>棚号</label><input id="mc-shed" placeholder="如 A棚"></div>
+        <div><label>说明</label><input id="mc-reason" placeholder="复核情况说明"></div>
+        <div class="small" style="align-self:end"><label><input type="checkbox" id="mc-override" style="width:auto"> 掉线/缺测时强制（确认风险）</label></div>
+        <div style="align-self:end"><button class="primary" id="mc-save">起草并下发</button></div>
+      </div>
+    </div>
+    <table id="commandTable"></table>
+  </section>
+
+  <section id="tab-archive" hidden>
+    <div class="tabs">
+      <button data-sub="versions" class="active">读数版本链（旧版本留档）</button>
+      <button data-sub="ehistory">事件旧版本</button>
+      <button data-sub="audit">审计台账</button>
+    </div>
+    <div id="sub-versions"><table id="versionTable"></table></div>
+    <div id="sub-ehistory" hidden><table id="ehistoryTable"></table></div>
+    <div id="sub-audit" hidden><table id="auditTable"></table></div>
+  </section>
+</main>
+
+<dialog id="reportDlg">
+  <h3 style="margin-top:0">上报读数（含电话报数补录）</h3>
+  <div class="small muted" id="reportMeta"></div>
+  <div class="formline">
+    <div><label>温度 ℃（留空=缺失）</label><input id="rp-temp" type="number" step="0.1"></div>
+    <div><label>湿度 %RH（留空=缺失）</label><input id="rp-hum" type="number" step="0.1"></div>
+    <div><label>氨气 ppm（留空=缺失）</label><input id="rp-nh3" type="number" step="0.1"></div>
+    <div><label>采样时刻</label><input id="rp-time" type="datetime-local"></div>
+  </div>
+  <label>上报方式</label>
+  <select id="rp-source"><option value="device">设备自动</option><option value="phone">电话报数</option><option value="manual">人工抄录</option></select>
+  <div class="row" style="margin-top:14px;justify-content:flex-end"><button id="rp-cancel">取消</button>&nbsp;<button class="primary" id="rp-save">提交读数</button></div>
+</dialog>
+
+<dialog id="correctDlg">
+  <h3 style="margin-top:0">更正读数（旧版本留档，事件/指令按新值重判）</h3>
+  <div class="small muted" id="correctMeta"></div>
+  <div class="formline">
+    <div><label>温度 ℃</label><input id="ct-temp" type="number" step="0.1"></div>
+    <div><label>湿度 %RH</label><input id="ct-hum" type="number" step="0.1"></div>
+    <div><label>氨气 ppm</label><input id="ct-nh3" type="number" step="0.1"></div>
+    <div><label>采样时刻</label><input id="ct-time" type="datetime-local"></div>
+  </div>
+  <label>更正原因</label><input id="ct-reason" placeholder="如 电话报数误记">
+  <div class="row" style="margin-top:14px;justify-content:flex-end"><button id="ct-cancel">取消</button>&nbsp;<button class="warn" id="ct-save">提交更正并重判</button></div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+let state = null, evFilter = "open";
+const operator = () => ($("#operator").value.trim() || "未署名值班员");
+
+function localInput(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  const pad = n => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+function toast(msg, isErr) {
+  const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (isErr ? " err" : "");
+  clearTimeout(t._h); t._h = setTimeout(() => t.className = "toast", 3500);
+}
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    ...options,
+    headers: options.body ? { "Content-Type": "application/json" } : {}
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || data.error || "请求失败 " + res.status);
+  return data;
+}
+const LBL = { temp:"温度", hum:"湿度", nh3:"氨气" };
+const UNIT = { temp:"℃", hum:"%RH", nh3:"ppm" };
+
+async function load() {
+  state = await api("/api/state");
+  renderPoints(); renderEvents(); renderCommands();
+  loadVersions();
+}
+
+function renderStats() {
+  const pts = state.points;
+  const online = pts.filter(p => p.online).length;
+  const offline = pts.length - online;
+  const openBreach = state.events.filter(e => e.kind === "breach" && e.status === "open").length;
+  const openOther = state.events.filter(e => e.kind !== "breach" && e.status === "open").length;
+  const issued = state.commands.filter(c => c.status === "issued" || c.status === "close_requested").length;
+  $("#pointStats").innerHTML = [
+    ["测点总数", pts.length, "blue"], ["在线", online, "green"], ["掉线", offline, "red"],
+    ["未结越界", openBreach, "red"], ["缺测/掉线事件", openOther, "amber"], ["风机在途指令", issued, "blue"]
+  ].map(([k,v,c]) => `<div class="stat"><div class="meta">${k}</div><b class="pill ${c}">${v}</b></div>`).join("");
+}
+
+function renderPoints() {
+  renderStats();
+  $("#pointCards").innerHTML = state.points.map(p => {
+    const open = p.openEvents || [];
+    const statusPill = !p.online
+      ? '<span class="pill red">掉线</span>'
+      : (!p.complete ? '<span class="pill amber">缺测</span>'
+        : (p.evaluation.violations.length ? '<span class="pill red">越界</span>' : '<span class="pill green">正常</span>'));
+    const metrics = ["temp","hum","nh3"].map(m => {
+      const v = p.latest?.values?.[m];
+      const vio = p.evaluation?.violations.find(x => x.metric === m);
+      return `<div>${LBL[m]}<b class="${vio ? "bad" : ""}">${v === null || v === undefined ? "—" : v}</b><span class="small muted">${UNIT[m]} ${p.thresholds[m].min}~${p.thresholds[m].max}</span></div>`;
+    }).join("");
+    const openTags = open.length
+      ? open.map(e => `<span class="pill ${e.kind==="breach"?"red":"amber"}">${e.kind==="breach"?LBL[e.metric]+(e.level==="high"?"超高":"偏低"):(e.kind==="missing"?"读数缺失":"设备掉线")}</span>`).join(" ")
+      : '<span class="pill gray">无未结事件</span>';
+    return `<article class="card">
+      <div class="row"><h3>${esc(p.shed)} · ${esc(p.name)}</h3>${statusPill}</div>
+      <div class="small muted">设备号 <code>${esc(p.deviceNo)}</code> · 最后上报 ${p.lastSeen ? new Date(p.lastSeen).toLocaleString("zh-CN") : "无"}</div>
+      <div class="metric">${metrics}</div>
+      <div class="row" style="align-items:flex-start"><div>${openTags}</div></div>
+      ${p.latest ? `<div class="small muted">采样 ${new Date(p.latest.sampledAt).toLocaleString("zh-CN")} · v${p.latest.version} · ${esc(p.latest.source)}${p.latest.complete ? "" : "（数据不全，风机禁自动开）"}</div>` : '<div class="small muted">从无上报</div>'}
+      <div class="row" style="margin-top:8px;justify-content:flex-end">
+        <button data-report="${esc(p.deviceNo)}">上报</button>
+        ${p.latest ? `<button data-correct="${esc(p.latest.readingId)}">更正最近读数</button>` : ""}
+      </div>
+    </article>`;
+  }).join("");
+  $$("[data-report]").forEach(b => b.onclick = () => openReport(b.dataset.report));
+  $$("[data-correct]").forEach(b => b.onclick = () => openCorrect(b.dataset.correct));
+}
+
+function kindText(e) {
+  if (e.kind === "breach") return `${LBL[e.metric]}${e.level==="high"?"超高":"偏低"}`;
+  if (e.kind === "missing") return "读数缺失";
+  return "设备掉线";
+}
+function eventPill(e) {
+  if (e.status === "closed") return '<span class="pill gray">已结·'+esc(e.closeReason==="reading_back_normal"?"恢复正常":e.closeReason==="reading_resumed"?"恢复上报":e.closeReason==="device_back_online"?"设备恢复":"已结")+'</span>';
+  return e.kind==="breach" ? '<span class="pill red">未结·越界</span>' : '<span class="pill amber">未结·'+(e.kind==="missing"?"缺测":"掉线")+'</span>';
+}
+function renderEvents() {
+  let list = [...state.events].sort((a,b) => (a.status===b.status ? b.lastAt.localeCompare(a.lastAt) : a.status==="open"?-1:1));
+  if (evFilter === "open") list = list.filter(e => e.status === "open");
+  if (evFilter === "closed") list = list.filter(e => e.status === "closed");
+  $("#eventTable").innerHTML = `<tr><th>状态</th><th>棚/测点</th><th>设备号</th><th>类型</th><th>首报</th><th>最近上报</th><th>并入次数</th><th>当前值</th></tr>` +
+    list.map(e => `<tr>
+      <td>${eventPill(e)}</td>
+      <td>${esc(e.shed)} · ${esc(e.pointName)}</td>
+      <td><code>${esc(e.deviceNo)}</code></td>
+      <td>${kindText(e)}</td>
+      <td class="small">${new Date(e.firstAt).toLocaleString("zh-CN")}</td>
+      <td class="small">${new Date(e.lastAt).toLocaleString("zh-CN")}</td>
+      <td>${(e.basisReadingIds||[]).length}</td>
+      <td>${e.readingValue !== null && e.readingValue !== undefined ? e.readingValue + " " + (UNIT[e.metric]||"") : "—"}${e.status==="closed"&&e.resolvedAt?`<div class="small muted">结于 ${new Date(e.resolvedAt).toLocaleString("zh-CN")}</div>`:""}</td>
+    </tr>`).join("") || '<tr><td colspan="8" class="muted">暂无事件</td></tr>';
+}
+
+function cmdStatus(c) {
+  const m = {
+    draft: ["待复核建议", "blue"], issued: ["已下发·风机开", "red"],
+    close_requested: ["待换人确认关闭", "amber"], closed: ["已关闭", "green"]
+  }[c.status];
+  return `<span class="pill ${m[1]}">${m[0]}</span>`;
+}
+function cmdValidity(c) {
+  if (c.validity === "valid") return '<span class="pill green">依据有效</span>';
+  if (c.validity === "blocked") return '<span class="pill red">禁止自动开启</span>';
+  if (c.validity === "override") return '<span class="pill amber">强制·人工担责</span>';
+  if (c.validity === "invalid") return '<span class="pill red">依据失效·待复核</span>';
+  if (c.validity === "invalid_closed") return '<span class="pill gray">已关闭（依据曾失效）</span>';
+  return '<span class="pill gray">已关闭</span>';
+}
+function renderCommands() {
+  const list = [...state.commands].sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+  $("#commandTable").innerHTML = `<tr><th>状态</th><th>棚</th><th>来源</th><th>依据/阻塞</th><th>有效性</th><th>下发人</th><th>换人关闭</th><th>操作</th></tr>` +
+    list.map(c => {
+      const bl = (c.blockersNow||c.blockers||[]);
+      const blockTxt = bl.length
+        ? '<div class="small" style="color:var(--red)">⛔ ' + bl.map(x => esc(x.deviceNo+" "+(x.reason==="device_offline"?"掉线":"缺测"))).join("、") + "：禁止自动开启</div>"
+        : '<div class="small muted">无掉线/缺测阻塞</div>';
+      const basis = c.basisEventIds.length
+        ? `<div class="small muted">依据事件 ${c.basisEventIds.length} 个（未结 ${c.basisEventIds.filter(id => state.events.find(e => e.id===id && e.status==="open")).length}）</div>`
+        : '<div class="small muted">人工指令，无事件依据</div>';
+      let actions = "";
+      if (c.status === "draft") {
+        const blocked = (c.blockersNow||[]).length > 0;
+        actions = `<button class="primary" data-cmd="${c.id}" data-act="issue">复核下发</button>` +
+          (blocked ? `<label class="small"><input type="checkbox" data-ov="${c.id}" style="width:auto"> 强制（掉线/缺测，人工担责）</label>` : "") +
+          ` <button data-cmd="${c.id}" data-act="cancel_draft">作废建议</button>`;
+      } else if (c.status === "issued") {
+        actions = `<button class="warn" data-cmd="${c.id}" data-act="request_close">申请关闭</button><div class="small muted">须与下发人不同</div>`;
+      } else if (c.status === "close_requested") {
+        actions = `<button class="danger" data-cmd="${c.id}" data-act="confirm_close">确认关闭</button><div class="small muted">须为第三人</div>`;
+      }
+      return `<tr>
+        <td>${cmdStatus(c)}<div class="small muted">${new Date(c.createdAt).toLocaleString("zh-CN")}</div></td>
+        <td><b>${esc(c.shed)}</b></td>
+        <td>${c.kind==="auto"?"系统自动建议":"值班员人工"}${c.override?'<div class="small muted">'+esc(c.reason||"强制下发")+'</div>':""}</td>
+        <td>${basis}${blockTxt}</td>
+        <td>${cmdValidity(c)}${c.invalidReason?`<div class="small" style="color:var(--red)">${esc(c.invalidReason)}</div>`:""}</td>
+        <td>${esc(c.issuedBy||"—")}${c.issuedAt?`<div class="small muted">${new Date(c.issuedAt).toLocaleString("zh-CN")}</div>`:""}</td>
+        <td>申请：${esc(c.requestedCloseBy||"—")}${c.requestedCloseAt?`<div class="small muted">${new Date(c.requestedCloseAt).toLocaleString("zh-CN")}</div>`:""}<br>确认：${esc(c.closeConfirmedBy||"—")}${c.closedAt?`<div class="small muted">${new Date(c.closedAt).toLocaleString("zh-CN")}</div>`:""}</td>
+        <td>${actions}</td>
+      </tr>`;
+    }).join("") || '<tr><td colspan="8" class="muted">暂无指令</td></tr>';
+
+  $$("[data-cmd]").forEach(btn => btn.onclick = async () => {
+    const id = btn.dataset.cmd, act = btn.dataset.act;
+    try {
+      if (act === "issue") {
+        const ov = $(`[data-ov="${id}"]`)?.checked || false;
+        if (ov && !confirm("该棚存在设备掉线或读数缺失。确认由你担责强制下发风机开启指令？")) return;
+        await api(`/api/commands/${id}/issue`, { method:"POST", body: JSON.stringify({ actor: operator(), override: ov }) });
+      } else {
+        await api(`/api/commands/${id}/action`, { method:"POST", body: JSON.stringify({ actor: operator(), action: act }) });
+      }
+      toast("操作成功"); await load();
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+// ---- 上报弹窗 ----
+function openReport(deviceNo) {
+  const p = state.points.find(x => x.deviceNo === deviceNo);
+  $("#reportMeta").textContent = `${p.shed} · ${p.name} · ${p.deviceNo}`;
+  ["#rp-temp","#rp-hum","#rp-nh3"].forEach(i => $(i).value = "");
+  $("#rp-time").value = localInput();
+  $("#rp-source").value = "device";
+  $("#reportDlg").showModal();
+  $("#rp-save").onclick = async () => {
+    try {
+      const values = {
+        temp: $("#rp-temp").value === "" ? null : Number($("#rp-temp").value),
+        hum: $("#rp-hum").value === "" ? null : Number($("#rp-hum").value),
+        nh3: $("#rp-nh3").value === "" ? null : Number($("#rp-nh3").value)
+      };
+      const r = await api("/api/readings", { method:"POST", body: JSON.stringify({
+        deviceNo, values, sampledAt: new Date($("#rp-time").value).toISOString(),
+        source: $("#rp-source").value, actor: operator()
+      }) });
+      const n = r.point.evaluation?.violations.length || 0;
+      const miss = r.point.latest && !r.point.latest.complete;
+      $("#reportDlg").close();
+      toast(miss ? "读数不全：已登记，风机不会自动开启" : (n ? `已并入/生成 ${n} 项越界事件` : "读数正常，无未结越界"));
+      await load();
+    } catch (e) { toast(e.message, true); }
+  };
+}
+$("#rp-cancel").onclick = () => $("#reportDlg").close();
+
+// ---- 更正弹窗 ----
+let correctingId = null;
+async function openCorrect(readingId) {
+  correctingId = readingId;
+  const readings = await api(`/api/readings?pointId=${encodeURIComponent(state.points.find(p => (p.latest||{}).readingId === readingId)?.id || "")}`);
+  const r = readings.find(x => x.id === readingId) || readings[0];
+  if (!r) return toast("未找到读数", true);
+  $("#correctMeta").textContent = `原读数 v${r.version}（${r.deviceNo}，${new Date(r.sampledAt).toLocaleString("zh-CN")}）`;
+  $("#ct-temp").value = r.values.temp ?? "";
+  $("#ct-hum").value = r.values.hum ?? "";
+  $("#ct-nh3").value = r.values.nh3 ?? "";
+  $("#ct-time").value = localInput(r.sampledAt);
+  $("#ct-reason").value = "";
+  $("#correctDlg").showModal();
+}
+$("#ct-cancel").onclick = () => $("#correctDlg").close();
+$("#ct-save").onclick = async () => {
+  try {
+    const values = {
+      temp: $("#ct-temp").value === "" ? null : Number($("#ct-temp").value),
+      hum: $("#ct-hum").value === "" ? null : Number($("#ct-hum").value),
+      nh3: $("#ct-nh3").value === "" ? null : Number($("#ct-nh3").value)
+    };
+    const r = await api(`/api/readings/${correctingId}/correct`, { method:"POST", body: JSON.stringify({
+      values, sampledAt: new Date($("#ct-time").value).toISOString(),
+      reason: $("#ct-reason").value, actor: operator()
+    }) });
+    $("#correctDlg").close();
+    toast(`已重判：归档旧事件 ${r.archived} 个，重放读数 ${r.replayed} 条；旧版本已留档`);
+    await load();
+  } catch (e) { toast(e.message, true); }
+};
+
+// ---- 存档 ----
+async function loadVersions() {
+  const list = await api("/api/readings");
+  const pointOf = id => state.points.find(p => p.id === id);
+  $("#versionTable").innerHTML = `<tr><th>版本</th><th>设备号/测点</th><th>温/湿/氨</th><th>采样时刻</th><th>接收时刻</th><th>来源</th><th>更正</th></tr>` +
+    list.slice(0, 200).map(r => {
+      const p = pointOf(r.pointId);
+      return `<tr style="${r.isCurrent?"":"opacity:.6"}">
+        <td>v${r.version} ${r.isCurrent?'<span class="pill green">现行</span>':'<span class="pill gray">已留档</span>'}</td>
+        <td><code>${esc(r.deviceNo)}</code><div class="small muted">${esc(p? p.shed+" "+p.name : "")}</div></td>
+        <td>${r.values.temp??"—"} / ${r.values.hum??"—"} / ${r.values.nh3??"—"}</td>
+        <td class="small">${new Date(r.sampledAt).toLocaleString("zh-CN")}</td>
+        <td class="small">${new Date(r.receivedAt).toLocaleString("zh-CN")}</td>
+        <td>${esc(r.source||"")}${r.correctedBy?`<div class="small muted">${esc(r.correctedBy)}：${esc(r.correctionReason||"")}</div>`:""}</td>
+        <td>${r.correctionOf ? "更正自旧版" : "—"}</td>
+      </tr>`;
+    }).join("") || '<tr><td colspan="7" class="muted">暂无读数</td></tr>';
+}
+async function loadEhistory() {
+  const list = await api("/api/event-history");
+  $("#ehistoryTable").innerHTML = `<tr><th>原事件</th><th>棚/测点</th><th>类型</th><th>原状态</th><th>首报~最近</th><th>归档原因</th><th>归档人/时刻</th></tr>` +
+    list.map(e => `<tr style="opacity:.75">
+      <td><code>${esc(e.id)}</code></td>
+      <td>${esc(e.shed)} · ${esc(e.pointName)}<div class="small muted">${esc(e.deviceNo)}</div></td>
+      <td>${kindText(e)}</td>
+      <td>${e.status==="open"?"未结":"已结"}</td>
+      <td class="small">${new Date(e.firstAt).toLocaleString("zh-CN")}<br>~${new Date(e.lastAt).toLocaleString("zh-CN")}</td>
+      <td>读数更正重判</td>
+      <td class="small">${esc(e.archiveActor)}<br>${new Date(e.archivedAt).toLocaleString("zh-CN")}</td>
+    </tr>`).join("") || '<tr><td colspan="7" class="muted">暂无旧版本事件</td></tr>';
+}
+async function loadAudit() {
+  const list = await api("/api/audit");
+  const TYPE = {
+    reading_received:"读数上报", reading_corrected:"读数更正", point_rebuilt:"重判",
+    event_open:"事件生成", event_merge:"事件并入", event_close:"事件关闭",
+    command_propose:"自动建议", command_issue:"指令下发", command_manual_issue:"人工下发",
+    command_request_close:"申请关闭", command_confirm_close:"确认关闭", command_auto_revoke:"建议作废",
+    command_invalidated_by_correction:"指令依据失效", command_cancel_draft:"建议作废",
+    point_register:"测点登记", seed:"初始化"
+  };
+  $("#auditTable").innerHTML = `<tr><th>#</th><th>时刻</th><th>类型</th><th>操作人</th><th>内容</th></tr>` +
+    list.map(a => `<tr><td>${a.seq}</td><td class="small">${new Date(a.at).toLocaleString("zh-CN")}</td><td>${TYPE[a.type]||esc(a.type)}</td><td>${esc(a.actor)}</td><td class="small"><code>${esc(JSON.stringify(a.payload))}</code></td></tr>`).join("");
+}
+
+// ---- 事件绑定 ----
+$$(".tabs > button[data-tab]").forEach(b => b.onclick = () => {
+  $$(".tabs > button[data-tab]").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  ["points","events","commands","archive"].forEach(t => $("#tab-"+t).hidden = t !== b.dataset.tab);
+  if (b.dataset.tab === "archive") loadVersions();
+});
+$$("[data-evfilter]").forEach(b => b.onclick = () => {
+  evFilter = b.dataset.evfilter;
+  $$("[data-evfilter]").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  renderEvents();
+});
+$$("[data-sub]").forEach(b => b.onclick = () => {
+  $$("[data-sub]").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  ["versions","ehistory","audit"].forEach(s => $("#sub-"+s).hidden = s !== b.dataset.sub);
+  if (b.dataset.sub === "ehistory") loadEhistory();
+  if (b.dataset.sub === "audit") loadAudit();
+});
+$("#np-save").onclick = async () => {
+  try {
+    await api("/api/points", { method:"POST", body: JSON.stringify({
+      shed: $("#np-shed").value.trim(), name: $("#np-name").value.trim(),
+      deviceNo: $("#np-device").value.trim(), actor: operator()
+    }) });
+    $("#np-shed").value = $("#np-name").value = $("#np-device").value = "";
+    toast("测点已登记"); await load();
+  } catch (e) { toast(e.message, true); }
+};
+$("#mc-save").onclick = async () => {
+  try {
+    await api("/api/commands/manual", { method:"POST", body: JSON.stringify({
+      shed: $("#mc-shed").value.trim(), reason: $("#mc-reason").value.trim(),
+      override: $("#mc-override").checked, actor: operator()
+    }) });
+    $("#mc-reason").value = ""; $("#mc-override").checked = false;
+    toast("已起草并下发，等待换人确认关闭"); await load();
+  } catch (e) { toast(e.message, true); }
+};
+$("#reload").onclick = load;
+$("#sweep").onclick = async () => { try { await api("/api/sweep", { method:"POST", body: JSON.stringify({ actor: operator() }) }); toast("掉线扫描完成"); await load(); } catch (e) { toast(e.message, true); } };
+$("#operator").value = localStorage.getItem("operator") || "";
+$("#operator").oninput = () => localStorage.setItem("operator", $("#operator").value);
+load();
+</script>
+</body>
+</html>
